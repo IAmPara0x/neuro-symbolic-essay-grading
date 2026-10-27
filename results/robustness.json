@@ -1,0 +1,7 @@
+{
+  "n": 400,
+  "paraphrase_mean_abs_drift": 0.72,
+  "paraphrase_max_abs_drift": 63.18,
+  "padding_mean_grade_change": -1.09,
+  "padding_pct_increased": 45.0
+}

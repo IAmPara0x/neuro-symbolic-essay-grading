@@ -1,0 +1,44 @@
+{
+  "mean-baseline": {
+    "rmse_0_100": 21.93,
+    "rmse_norm": 0.2193,
+    "pearson": 0.0,
+    "qwk": 0.0
+  },
+  "keyword-only": {
+    "rmse_0_100": 51.91,
+    "rmse_norm": 0.5191,
+    "pearson": 0.469,
+    "qwk": 0.177
+  },
+  "similarity-only": {
+    "rmse_0_100": 34.88,
+    "rmse_norm": 0.3488,
+    "pearson": 0.496,
+    "qwk": 0.264
+  },
+  "ner-only": {
+    "rmse_0_100": 42.45,
+    "rmse_norm": 0.4245,
+    "pearson": 0.068,
+    "qwk": 0.063
+  },
+  "mean-of-modules": {
+    "rmse_0_100": 33.1,
+    "rmse_norm": 0.331,
+    "pearson": 0.442,
+    "qwk": 0.253
+  },
+  "full-fuzzy-lenient": {
+    "rmse_0_100": 34.17,
+    "rmse_norm": 0.3417,
+    "pearson": 0.48,
+    "qwk": 0.312
+  },
+  "full-fuzzy-strict": {
+    "rmse_0_100": 50.54,
+    "rmse_norm": 0.5054,
+    "pearson": 0.457,
+    "qwk": 0.159
+  }
+}

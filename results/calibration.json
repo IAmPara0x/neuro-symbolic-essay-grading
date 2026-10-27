@@ -1,0 +1,20 @@
+{
+  "fit": {
+    "slope": 0.405,
+    "intercept": 59.74
+  },
+  "train_n": 1818,
+  "test_n": 455,
+  "uncalibrated_test": {
+    "rmse_0_100": 33.34,
+    "rmse_norm": 0.3334,
+    "pearson": 0.478,
+    "qwk": 0.33
+  },
+  "calibrated_test": {
+    "rmse_0_100": 19.92,
+    "rmse_norm": 0.1992,
+    "pearson": 0.478,
+    "qwk": 0.376
+  }
+}

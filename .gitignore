@@ -1,0 +1,22 @@
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+*.egg-info/
+.pytest_cache/
+
+# Large downloaded dataset (rebuild with: curl ... && python -m src.datasets)
+data/raw/mohler.zip
+data/raw/mohler_extracted/
+data/processed/mohler.csv
+data/processed/*.png
+
+# LaTeX build artifacts
+source/*.aux
+source/*.log
+source/*.out
+source/*.toc
+
+# Node build tooling for the docx report
+report_build/node_modules/
