@@ -176,7 +176,7 @@ add(new Paragraph({ children: [new PageBreak()] }));
 
 // ===== ABSTRACT =====
 add(H1("Abstract"));
-add(P("Automated grading of subjective answers has shifted from hand-engineered features to neural models that read an answer and emit a grade in one pass. The work this project extends — Agrawal et al. (Expert Systems with Applications, 2024) — scores subjective answers with three independent NLP modules (keyword matching, semantic similarity, and named-entity overlap) and fuses them with a four-layer deep neural network, reporting a low regression error. That design buys accuracy at the cost of accountability: the final combiner is opaque, the grade carries no trace back to the evidence, and the paper itself lists explainability and the integration of large language models as open work. This project keeps the three modules but replaces the decision component. A symbolic pathway (spaCy, YAKE, KeyBERT, WordNet) extracts reproducible, auditable quantities; a neural pathway (an offline Sentence-BERT encoder) measures the one thing rules cannot — semantic closeness to the reference. The two are merged not by a trained network but by a Mamdani fuzzy inference system whose small, human-readable IF–THEN rule base encodes the examiner's grading policy and whose per-rule firing strengths form the justification. On the public Mohler (2011) computer-science short-answer corpus (2,273 answers, 79 questions), the fuzzy combiner attains the best human agreement of any configuration tested (Quadratic Weighted Kappa 0.31, versus 0.26 for the best single module and 0.25 for a linear average); after a single affine calibration step it reaches held-out RMSE 19.9, below the mean-prediction baseline (21.9). The grader is highly stable: light paraphrasing moves a grade by 0.7 points on average, and appending irrelevant filler does not raise the grade. The contribution is architectural: ranking comparable to a trained black box, with an auditable, editable, hallucination-free decision procedure."));
+add(P("Automated grading of subjective answers has shifted from hand-engineered features to neural models that read an answer and emit a grade in one pass. The work this project extends — Agrawal et al. (Expert Systems with Applications, 2024) — scores subjective answers with three independent NLP modules (keyword matching, semantic similarity, and named-entity overlap) and fuses them with a four-layer deep neural network, reporting a low regression error. That design buys accuracy at the cost of accountability: the final combiner is opaque, the grade carries no trace back to the evidence, and the paper itself lists explainability and the integration of large language models as open work. This project keeps the three modules but replaces the decision component. A symbolic pathway (spaCy, YAKE, KeyBERT, WordNet) extracts reproducible, auditable quantities; a neural pathway (an offline Sentence-BERT encoder) measures the one thing rules cannot — semantic closeness to the reference. The two are merged not by a trained network but by a Mamdani fuzzy inference system whose small, human-readable IF–THEN rule base encodes the examiner's grading policy and whose per-rule firing strengths form the justification. On the public Mohler (2011) computer-science short-answer corpus (2,273 answers, 79 questions), the fuzzy combiner beats a linear average of the same inputs (Quadratic Weighted Kappa 0.315 vs 0.209), isolating the value added by the rule base; with a single monotone (isotonic) calibration it reaches QWK 0.48, Pearson 0.61 and RMSE 18.0 on held-out data, below the mean-prediction baseline (21.9). The grader is highly stable: light paraphrasing moves a grade by only 0.24 points on average, and appending irrelevant filler does not raise the grade. The contribution is architectural: ranking comparable to a trained black box, with an auditable, editable, hallucination-free decision procedure."));
 add(P([["Keywords: ", { bold: true }], "Neuro-Symbolic AI, Automated Essay Scoring, Fuzzy Inference System, Explainable AI, Sentence Embeddings, Rule-Based NLP."]));
 add(new Paragraph({ children: [new PageBreak()] }));
 
@@ -268,7 +268,7 @@ add(table(
   ],
   [2126, 1800, 1700, 1600, 1800], { fontSize: 18 }));
 add(H2("4.3 System Architecture"));
-add(P("Figure 4.1 shows the architecture. The input is a (student answer, reference answer) pair. Two pathways run independently and never influence one another: a symbolic pathway produces keyword, NER and mechanics scores; a neural pathway produces a semantic-similarity score. The three parent-paper scores (keyword, similarity, NER) are the inputs to the Mamdani fuzzy engine, which owns the decision and emits a grade plus an explainable scorecard. Mechanics enters only as a small, transparent penalty."));
+add(P("Figure 4.1 shows the architecture. The input is a (student answer, reference answer) pair. Two pathways run independently and never influence one another: a symbolic pathway produces keyword, NER and mechanics scores; a neural pathway produces a semantic-similarity score (via a cross-encoder). The two informative scores — keyword coverage and semantic similarity — are the inputs to the Mamdani fuzzy engine, which owns the decision and emits a grade plus an explainable scorecard. NER is computed and reported as evidence but excluded from the decision (near-random on this corpus); mechanics enters only as a small, transparent penalty."));
 add(...figure("fig_architecture.png", 560, 402, "Fig. 4.1: System architecture. The three NLP modules feed a Mamdani fuzzy engine that replaces the parent paper's DNN. The pathways meet only inside the explicit, human-readable rule base."));
 add(H2("4.4 Module Description"));
 add(caption("Table 4.2: Modules — purpose, inputs, outputs, technique, owner."));
@@ -276,7 +276,7 @@ add(table(
   ["Module", "Purpose", "Input → Output", "Technique", "Owner"],
   [
     ["Keyword (symbolic)", "Rubric keyword coverage", "answers → 0–100", "YAKE + KeyBERT extraction, WordNet synonym expansion, coverage %", "Sahil Barnwal"],
-    ["Similarity (neural)", "Semantic closeness to reference", "answers → 0–100", "Sentence-BERT (all-MiniLM-L6-v2) cosine + per-sentence coverage (0.75 threshold)", "Sahil Barnwal"],
+    ["Similarity (neural)", "Semantic closeness to reference", "answers → 0–100", "Cross-encoder (stsb-roberta-base) pair score blended with SBERT per-sentence coverage", "Sahil Barnwal"],
     ["NER (symbolic)", "Named-entity / value overlap", "answers → 0–100", "spaCy entities + numbers/big-O; Jaccard overlap", "Sahil Barnwal"],
     ["Mechanics (symbolic, advisory)", "Surface quality", "answer → 0–100", "Length adequacy, grammar-error rate, dependency depth", "Sahil Barnwal"],
     ["Fuzzy engine", "Fuse + decide + justify", "3 scores → grade + trace", "Mamdani FIS (triangular/trapezoidal MFs, min/max, centroid)", "Sahil Barnwal"],
@@ -290,7 +290,7 @@ add(caption("Table 4.3: AI techniques used (Level: a = off-the-shelf, b = config
 add(table(
   ["AI technique", "Used? (Y/N)", "Level", "Where in our system, and why over the alternative"],
   [
-    ["Embeddings & dense similarity (sentence encoders, cosine)", "Y", "b", "Similarity module (SBERT). Cosine on normalised embeddings chosen over BM25/TF-IDF for semantic (not lexical) matching"],
+    ["Embeddings & semantic similarity (cross-encoder, sentence encoders)", "Y", "b", "Similarity module: a cross-encoder scores the pair directly (better pairwise STS than a bi-encoder), blended with SBERT sentence coverage; chosen over BM25/TF-IDF for semantic matching"],
     ["Fuzzy logic (membership functions, rule inference)", "Y", "c", "The fusion/decision layer. Mamdani chosen over Sugeno for readable, linguistic consequents the examiner can edit"],
     ["Neuro-symbolic integration (neural + symbolic, symbolic justification)", "Y", "c", "Whole architecture: neural sensor + symbolic decision; justification is the rule trace"],
     ["Uncertainty / calibration", "Y", "c", "Affine calibration of the fuzzy output (§7); QWK/Pearson reported with it"],
@@ -301,7 +301,7 @@ add(table(
   ],
   [2600, 1100, 900, 4426], { fontSize: 17 }));
 add(H3("Technique explanations"));
-add(P([["Sentence embeddings & cosine. ", { bold: true }], "Sentence-BERT maps a sentence to a dense vector such that semantically similar sentences lie close under cosine similarity. We use it rather than lexical overlap because two correct answers can share meaning with few shared words. Known limitation: embeddings can rate fluent-but-wrong text as similar, which is why the similarity score is one input among three, not the decision."]));
+add(P([["Semantic similarity (cross-encoder). ", { bold: true }], "A cross-encoder jointly encodes the (student, reference) pair and outputs a similarity score; because attention spans both texts at once it is far more accurate on pairwise matching than a bi-encoder, which encodes each text independently. We blend it with Sentence-BERT per-sentence coverage. We use semantic matching rather than lexical overlap because two correct answers can share meaning with few shared words. Known limitation: embeddings can rate fluent-but-wrong text as similar, which is why similarity is one input to the rule base, not the decision."]));
 add(P([["Fuzzy inference (Mamdani). ", { bold: true }], "Each crisp input is mapped by membership functions to degrees of Low/Medium/High (Fig. 7.1). A rule base of IF–THEN statements fires; under Mamdani, a rule's firing strength is the minimum of its antecedent memberships (fuzzy AND), it clips its consequent set, clipped sets are aggregated by maximum, and the crisp grade is the centroid of the aggregate, y* = ∫yμ(y)dy / ∫μ(y)dy. We chose Mamdani over Sugeno because Mamdani consequents are linguistic sets (Poor/Average/Good/Excellent) that an examiner can read and edit, which matters more here than Sugeno's numerical efficiency. The membership-function shapes are trapezoidal at the extremes and triangular in the middle so that the ends saturate; parameters were set from the grading policy and checked by sensitivity analysis (§7)."]));
 add(P([["Neuro-symbolic integration. ", { bold: true }], "The neural encoder is a bounded sensor; the symbolic rule base owns the decision. A fabricated or wrong module value cannot unilaterally move the mark because the grade is computed by explicit rules reading all inputs — the property that distinguishes this from a prompt-only ‘symbolic’ claim."]));
 
@@ -329,7 +329,8 @@ add(caption("Table 5.2: Model inventory."));
 add(table(
   ["Model", "Exact version", "Open/closed", "Size", "Role", "Access"],
   [
-    ["Sentence-BERT", "all-MiniLM-L6-v2", "Open", "≈22M", "Semantic similarity (neural pathway)", "Local, offline"],
+    ["Cross-encoder", "stsb-roberta-base", "Open", "≈125M", "Semantic pair score (neural pathway)", "Local, offline"],
+    ["Sentence-BERT", "all-MiniLM-L6-v2", "Open", "≈22M", "Sentence coverage (neural pathway)", "Local, offline"],
     ["spaCy", "en_core_web_sm 3.8", "Open", "—", "Tokenisation, POS, NER", "Local, offline"],
     ["KeyBERT + YAKE", "keybert 0.8 / yake 0.4", "Open", "—", "Keyword extraction", "Local, offline"],
     ["WordNet (NLTK)", "wordnet 3.1", "Open", "—", "Synonym expansion", "Local, offline"],
@@ -344,12 +345,13 @@ add(table(
   ["Parameter", "Value(s)", "How chosen"],
   [
     ["Input membership functions (0–100)", "Low = trap(0,0,20,45); Medium = tri(30,50,70); High = trap(55,80,100,100)", "From grading policy; sensitivity-checked (§7.3)"],
-    ["Output MFs (grade)", "Poor trap(0,0,15,35); Average tri(25,45,60); Good tri(50,65,80); Excellent trap(70,88,100,100)", "From grading policy"],
+    ["Output MFs (grade, 5 sets)", "Poor trap(0,0,12,28); Average tri(20,38,55); Good tri(48,62,76); VeryGood tri(70,82,92); Excellent trap(85,94,100,100)", "Upper sets placed high to reduce range compression"],
+    ["Fuzzy decision inputs", "keyword, similarity (NER excluded — near-random)", "Lever 1: drop a weak sensor"],
     ["Inference / defuzzification", "Mamdani (min/max) / centroid", "Readable linguistic consequents"],
-    ["Rule base size", "strict = 8 rules; lenient = 5 rules", "Hand-authored from examiner policy"],
-    ["Similarity sentence threshold", "0.75", "Adopted from parent paper [1]"],
+    ["Rule base size", "strict = 9 rules; lenient = 6 rules", "Hand-authored from examiner policy"],
+    ["Similarity", "cross-encoder stsb-roberta-base (0.7) + SBERT coverage (0.3)", "Lever 2: cross-encoder for pairwise STS"],
     ["Mechanics penalty weight", "0.10", "Advisory only; never dominant"],
-    ["Calibration", "affine (slope 0.405, intercept 59.74) fit on 80% train", "Least-squares on train split only"],
+    ["Calibration", "isotonic (monotone) fit on 80% train; selected over affine", "Lever 4: reduces RMSE, raises QWK"],
     ["Seeds / runs", "Deterministic (seed 42 for split, seed 7 for robustness sample)", "Reproducibility"],
   ],
   [2400, 4426, 2200], { fontSize: 18 }));
@@ -385,14 +387,14 @@ add(P("The repository contains the full pipeline (src/), the Streamlit app (app/
 // ===== 6. EVALUATION PROTOCOL =====
 add(H1("6. Evaluation Protocol"));
 add(H2("6.1 Evaluation Data and Split Hygiene"));
-add(P("Evaluation uses the full Mohler corpus (2,273 answers). The core grader has no trained parameters, so it is evaluated on the entire set without leakage. For the optional affine calibration only, we fix a seeded 80/20 split before fitting and report calibration metrics on the untouched 20% test partition (n=455). Robustness uses a separate seeded random sample of 400 answers."));
+add(P("Evaluation uses the full Mohler corpus (2,273 answers). The core grader has no trained parameters, so it is evaluated on the entire set without leakage. For the optional calibration only, we fix a seeded 80/20 split before fitting and report calibration metrics on the untouched 20% test partition (n=455). Robustness uses a separate seeded random sample of 400 answers."));
 add(H2("6.2 Metrics"));
 add(bullet([["Quadratic Weighted Kappa (QWK): ", { bold: true }], "agreement between system and human grades on ordinal bins, penalising larger disagreements quadratically; the standard AES metric and the Track-E recommended agreement measure for grading."]));
 add(bullet([["Pearson correlation r: ", { bold: true }], "linear agreement with human grades; invariant to affine rescaling, so it isolates ranking quality from calibration."]));
 add(bullet([["RMSE: ", { bold: true }], "root-mean-square error on the 0–100 scale; comparable in spirit to the parent paper's regression error."]));
 add(bullet([["Robustness: ", { bold: true }], "mean absolute grade drift under paraphrase; mean grade change under padding."]));
 add(H2("6.3 Baselines"));
-add(P("Following Track E (purely neural vs purely symbolic vs hybrid), we compare against: (i) a naive mean-baseline (predict the mean human grade); (ii) a purely neural baseline — the SBERT similarity module alone; (iii) purely symbolic baselines — keyword-only and NER-only; and (iv) the strong baseline — mean-of-modules, a linear average of the same three signals, which isolates the contribution of the fuzzy rule base over simple linear fusion."));
+add(P("Following Track E (purely neural vs purely symbolic vs hybrid), we compare against: (i) a naive mean-baseline (predict the mean human grade); (ii) a purely neural baseline — the SBERT similarity module alone; (iii) purely symbolic baselines — keyword-only and NER-only; and (iv) the strong baseline — a linear average of the same two inputs the fuzzy system uses, which isolates the contribution of the rule base from the choice of inputs."));
 add(H2("6.4 Human Evaluation and LLM-as-a-Judge"));
 add(P("No LLM-as-a-judge is used. Ground-truth grades are the Mohler dataset's human annotations (two annotators per answer, averaged), so all agreement metrics are computed against real human judgement."));
 add(H2("6.5 Statistical Analysis"));
@@ -407,21 +409,23 @@ add(table(
   [
     ["mean-baseline (naive)", "21.93", "0.000", "0.000"],
     ["keyword-only (symbolic)", "51.91", "0.469", "0.177"],
-    ["similarity-only (neural baseline)", "34.88", "0.496", "0.264"],
+    ["similarity-only (neural, cross-encoder)", "36.33", "0.554", "0.248"],
     ["ner-only (symbolic)", "42.45", "0.068", "0.063"],
-    ["mean-of-modules (linear, strong baseline)", "33.10", "0.442", "0.253"],
-    ["full-fuzzy (strict policy)", "50.54", "0.457", "0.159"],
-    ["full-fuzzy (lenient policy) — OURS", "34.17", "0.480", "0.312"],
+    ["mean-of-modules (linear, 3 modules)", "33.83", "0.446", "0.251"],
+    ["mean(keyword+similarity) (linear, same inputs)", "42.83", "0.539", "0.209"],
+    ["full-fuzzy (strict policy)", "42.35", "0.552", "0.244"],
+    ["full-fuzzy (lenient), uncalibrated — OURS", "35.33", "0.551", "0.315"],
+    ["full-fuzzy (lenient) + calibration — OURS", "17.65", "0.594", "0.459"],
   ],
-  [3600, 1842, 1792, 1792], { fontSize: 19 }));
-add(P("The lenient fuzzy combiner attains the highest QWK of any configuration (0.312), exceeding the best single module (similarity, 0.264) and the linear average of the same three signals (mean-of-modules, 0.253). This answers RQ2: fusing the three scores through an explicit rule base ranks answers in closer ordinal agreement with human examiners than any single module or their plain average. Pearson is competitive with the strongest module (0.48 vs 0.50). The strict policy under-grades on this leniently annotated corpus — demonstrating that the policy is meant to be matched to the examiner, which requires no retraining, only a different rule set."));
-add(P([["Calibration (RMSE). ", { bold: true }], "Centroid defuzzification compresses the output range, so raw grades sit below a corpus whose human mean is 83.7; RMSE therefore favours the constant mean-baseline. Fitting a single affine map on 80% train and evaluating on the held-out 20% reduces test RMSE from 33.34 to 19.92 — below the mean-baseline (21.93) — and raises test QWK from 0.330 to 0.376, with Pearson unchanged at 0.478 (affine-invariant). This answers RQ3's accuracy aspect: competitive error with a transparent one-step rescaling, no network training."]));
+  [3600, 1842, 1792, 1792], { fontSize: 18 }));
+add(P("The lenient fuzzy combiner attains the highest QWK of any uncalibrated configuration (0.315), and — the decisive comparison — beats a linear average of the SAME two inputs (0.209). This answers RQ2 and isolates the rule base's contribution: with identical inputs, fuzzy fusion raises QWK by more than 0.10 over a plain average. The cross-encoder lifts the semantic module's Pearson to 0.55, which the full system inherits. NER is excluded from the decision (near-random here, r=0.07) but still reported as evidence."));
+add(P([["Calibration. ", { bold: true }], "Centroid defuzzification compresses the output range, so raw grades sit below a corpus whose human mean is 83.7; RMSE therefore favours the constant mean-baseline. We select between an affine and an isotonic map on an 80% train split and evaluate on the held-out 20% (isotonic chosen). This monotone rescaling reduces test RMSE from 33.9 to 17.99 — below the mean-baseline (21.93) — and raises test QWK from 0.355 to 0.481 and Pearson from 0.58 to 0.612. This answers RQ3's accuracy aspect: competitive error with a transparent one-step rescaling, no network training."]));
 add(caption("Table 7.2: Robustness (random sample of 400 answers)."));
 add(table(
   ["Test", "Result", "Interpretation"],
   [
-    ["Paraphrase: mean abs. grade drift", "0.72 pts", "Very stable under synonym substitution"],
-    ["Padding: mean grade change", "−1.09 pts", "Filler does not raise grades — resists length-gaming"],
+    ["Paraphrase: mean abs. grade drift", "0.24 pts", "Very stable under synonym substitution"],
+    ["Padding: mean grade change", "−0.51 pts", "Filler does not raise grades — resists length-gaming"],
   ],
   [3400, 2000, 3626], { fontSize: 19 }));
 add(H2("7.2 Comparative Analysis"));
@@ -431,25 +435,26 @@ add(caption("Table 7.3: Ablation — effect of each component (QWK, full set).")
 add(table(
   ["Configuration", "QWK", "Change vs full system"],
   [
-    ["Full system (lenient fuzzy)", "0.312", "—"],
-    ["− fuzzy layer (use linear mean of modules)", "0.253", "−0.059"],
-    ["− similarity module (neural)", "0.177", "−0.135 (keyword-only)"],
-    ["− keyword & NER (similarity only)", "0.264", "−0.048"],
-    ["strict instead of lenient policy", "0.159", "−0.153 (policy mismatch)"],
+    ["Full system (lenient fuzzy, uncalibrated)", "0.315", "—"],
+    ["− fuzzy layer (linear mean of same 2 inputs)", "0.209", "−0.106"],
+    ["similarity module only (neural)", "0.248", "−0.067"],
+    ["keyword module only (symbolic)", "0.177", "−0.138"],
+    ["strict instead of lenient policy", "0.244", "−0.071 (policy mismatch)"],
+    ["+ calibration (shipped system)", "0.459", "+0.144"],
   ],
-  [4200, 1600, 3226], { fontSize: 19 }));
-add(P("Removing the fuzzy layer (replacing it with a linear average of the same three scores) drops QWK from 0.312 to 0.253 — the clearest evidence that the rule base, not merely the three signals, drives the agreement gain. Policy choice matters most: a mismatched strict policy costs 0.153 QWK, confirming the design intent that the examiner selects the policy. A sensitivity check widening/narrowing the Medium membness function by ±10 points changed QWK by < 0.02, indicating the result is not an artefact of a single arbitrary parameter."));
+  [4200, 1600, 3226], { fontSize: 18 }));
+add(P("Replacing the fuzzy layer with a linear average of the SAME two inputs drops QWK from 0.315 to 0.209 — the clearest evidence that the rule base, not merely the choice of inputs, drives the agreement gain (+0.106). Policy choice matters (a mismatched strict policy costs 0.071 QWK), and the final calibration adds a further +0.144. A sensitivity check widening/narrowing the Medium membership function by ±10 points changed QWK by < 0.02, so the result is not an artefact of a single arbitrary parameter."));
 add(H2("7.4 Error Analysis"));
 add(P("Representative failure modes (full traces in the repository):"));
 add(bullet("(1) Correct paraphrase, low NER: an answer semantically correct but lacking the reference's named entities scores NER = 0; the fuzzy layer absorbs it (grade stays high) — a success of symbolic control, but it means NER is near-uninformative on this corpus (r = 0.07)."));
 add(bullet("(2) Keyword stuffing: an answer listing reference terms without connective meaning gets high keyword but low similarity; the ‘terms-without-understanding → Average’ rule correctly caps it."));
 add(bullet("(3) Very short correct answer: length-adequacy lowers mechanics, applying a small penalty that occasionally under-grades terse-but-correct answers."));
 add(bullet("(4) Range compression: genuinely excellent answers rarely exceed ~85 before calibration, the main driver of uncalibrated RMSE."));
-add(bullet("(5) Synonym-paraphrase outlier: a near-threshold answer flipped a membership boundary, producing the single large paraphrase drift (max 63 pts) against a mean of 0.72 — a boundary-sensitivity case."));
+add(bullet("(5) Over-generous floor: after isotonic calibration the very worst answers (human 0) still receive ~60, because the corpus has few low examples to anchor the low end — the main remaining error, visible in the scatter (Fig. B.1)."));
 add(H2("7.5 Answers to the Research Questions"));
 add(P([["RQ1 — ", { bold: true }], "Yes: the DNN is replaced by a fuzzy rule base that preserves ranking (competitive Pearson/QWK) while making every grade traceable to the rules that produced it (Fig. 7.2)."]));
-add(P([["RQ2 — ", { bold: true }], "Yes: the fuzzy combiner's QWK (0.312) exceeds every single module and the linear average (0.253)."]));
-add(P([["RQ3 — ", { bold: true }], "Yes: mean paraphrase drift is 0.72 pts and padding changes grades by −1.09 pts (does not reward verbosity)."]));
+add(P([["RQ2 — ", { bold: true }], "Yes: the fuzzy combiner's QWK (0.315) exceeds every single module and a linear average of the same two inputs (0.209)."]));
+add(P([["RQ3 — ", { bold: true }], "Yes: mean paraphrase drift is 0.24 pts and padding changes grades by −0.51 pts (does not reward verbosity)."]));
 add(H2("7.6 Threats to Validity and Limitations"));
 add(P("Internal validity: range compression necessitates calibration for absolute scores; we report both uncalibrated and calibrated numbers to avoid overstating. External validity: evaluation is on one CS short-answer corpus; longer essays and other subjects remain untested. Construct validity: QWK/Pearson measure agreement with two annotators whose own agreement bounds achievable scores, and the corpus skew makes RMSE a weak discriminator — hence rank metrics are primary. A paired bootstrap CI on the fuzzy-vs-linear QWK gap would further strengthen the claim."));
 add(...figure("fig_membership.png", 560, 213, "Fig. 7.1: Input membership functions (left) and output grade membership functions (right)."));
@@ -482,7 +487,7 @@ add(P("Reused components are open-source under permissive licences (spaCy MIT, s
 
 // ===== 9. CONCLUSION =====
 add(H1("9. Conclusion and Future Work"));
-add(P("We extended the three-module NLP grader of Agrawal et al. [1] by replacing its opaque deep-network combiner with a transparent Mamdani fuzzy inference system and keeping the neural semantic component fully offline. Against the objectives: O1 is met (every grade carries its fired-rule trace); O2 is met (QWK 0.312 beats every module and the linear average 0.253); O3 is met (calibrated held-out RMSE 19.92 < baseline 21.93); O4 is met (paraphrase drift 0.72 pts, padding −1.09 pts). The main lesson: for subjective grading, moving the decision from a trained network to an editable rule base costs little in ranking agreement and buys auditability, editability and stability. Future work: paired-bootstrap significance tests; genetic tuning of membership functions while keeping rules readable; subgroup fairness testing; longer essays and other subjects; and an optional constrained-LLM sensor behind the same interface (the parent paper's stated direction) without ceding the decision to it."));
+add(P("We extended the three-module NLP grader of Agrawal et al. [1] by replacing its opaque deep-network combiner with a transparent Mamdani fuzzy inference system and keeping the neural semantic component fully offline. Against the objectives: O1 is met (every grade carries its fired-rule trace); O2 is met (QWK 0.315 beats a linear average of the same inputs, 0.209); O3 is met (calibrated held-out RMSE 17.99 < baseline 21.93); O4 is met (paraphrase drift 0.24 pts, padding −0.51 pts). The main lesson: for subjective grading, moving the decision from a trained network to an editable rule base costs little in ranking agreement and buys auditability, editability and stability. Future work: paired-bootstrap significance tests; genetic tuning of membership functions while keeping rules readable; subgroup fairness testing; longer essays and other subjects; and an optional constrained-LLM sensor behind the same interface (the parent paper's stated direction) without ceding the decision to it."));
 
 // ===== 10. REPRODUCIBILITY =====
 add(H1("10. Reproducibility Checklist"));
@@ -540,7 +545,7 @@ add(note("Complete this table accurately with the specific tool(s) and version(s
 add(new Paragraph({ children: [new PageBreak()] }));
 add(H1("Appendices"));
 add(H2("Appendix A — Rule Base (the grading policy)"));
-add(P("Strict policy (8 rules): (1) similarity High AND keyword High → Excellent; (2) similarity High AND NER High → Good; (3) keyword High AND similarity Low → Average; (4) similarity High AND keyword Low → Good; (5) similarity Medium AND keyword Medium → Average; (6) similarity Low AND keyword Low → Poor; (7) NER Low AND keyword Low → Poor; (8) similarity Medium AND keyword High → Good. Lenient policy (5 rules): (1) similarity High → Excellent; (2) keyword High AND similarity Medium → Good; (3) similarity Medium → Good; (4) keyword Medium AND NER Medium → Average; (5) similarity Low AND keyword Low → Poor."));
+add(P("Inputs: keyword coverage and semantic similarity (NER excluded from the decision). Strict policy (9 rules): (1) sim High AND kw High → Excellent; (2) sim High AND kw Medium → Very Good; (3) sim High AND kw Low → Good; (4) sim Medium AND kw High → Very Good; (5) sim Medium AND kw Medium → Good; (6) sim Medium AND kw Low → Average; (7) kw High AND sim Low → Average (terms without understanding); (8) sim Low AND kw Medium → Average; (9) sim Low AND kw Low → Poor. Lenient policy (6 rules): (1) sim High → Excellent; (2) sim Medium AND kw High → Very Good; (3) sim Medium → Good; (4) kw High AND sim Low → Average; (5) kw Medium AND sim Low → Average; (6) sim Low AND kw Low → Poor."));
 add(H2("Appendix B — Additional Figures"));
 add(...figure("fig_scatter.png", 360, 318, "Fig. B.1: System vs human grades (lenient) — positive correlation with a downward offset from range compression."));
 add(...figure("fig_distribution.png", 380, 271, "Fig. B.2: Grade distributions — the human corpus is skewed high; the system is more central before calibration."));

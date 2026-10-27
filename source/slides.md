@@ -52,18 +52,19 @@
 
 ## Step 3 - Neural Pathway (offline)
 
-- Sentence-BERT (`all-MiniLM-L6-v2`), runs locally — no API.
-- Encodes student and reference, cosine similarity.
-- Per-sentence coverage against the reference (0.75 threshold).
-- One deterministic number → nothing to hallucinate.
-- This is the only neural component: a semantic **sensor**.
+- **Cross-encoder** (`stsb-roberta-base`) scores the answer–reference
+  pair directly — far better pairwise similarity than a bi-encoder.
+- Blended with Sentence-BERT per-sentence coverage (0.75 threshold).
+- Runs locally — no API, one deterministic number, nothing to hallucinate.
+- The only neural component: a semantic **sensor**, not the judge.
 
 ## Step 4 - Fuzzy Engine: Setup
 
-- Inputs: keyword, similarity, NER scores (the 3 parent modules).
-- Output: final grade.
+- Inputs: **keyword + similarity** (the two informative signals).
+- NER dropped from the decision (near-random here, r=0.07) —
+  still shown as evidence. Dropping a weak sensor needs no retraining.
+- Output grade: Poor / Average / Good / Very Good / Excellent.
 - Triangular / trapezoidal membership functions: Low, Medium, High.
-- Each score gets a degree of membership in each set.
 
 ## Step 4 - Fuzzy Engine: Rules
 
@@ -91,23 +92,25 @@
 - Paraphrase test: does the grade stay stable?
 - Padding test: does filler text raise the grade?
 
-## Results — Fuzzy Combiner Wins on Agreement
+## Results — The Rule Base Adds the Gain
 
 | System | RMSE | Pearson | QWK |
 |--------|------|---------|-----|
 | mean-baseline | 21.9 | 0.00 | 0.00 |
-| similarity-only | 34.9 | **0.50** | 0.26 |
-| mean-of-modules | 33.1 | 0.44 | 0.25 |
-| **full-fuzzy (lenient)** | 34.2 | 0.48 | **0.31** |
+| similarity-only (cross-enc.) | 36.3 | 0.55 | 0.25 |
+| linear mean (same 2 inputs) | 42.8 | 0.54 | 0.21 |
+| **full-fuzzy (lenient)** | 35.3 | 0.55 | **0.32** |
+| **+ calibration (shipped)** | **17.7** | **0.59** | **0.46** |
 
-- **Best QWK of any configuration** — beats every single module and
-  the linear average.
-- After one affine calibration: held-out RMSE **19.9** < baseline 21.9.
+- Fuzzy fusion **beats a linear average of the SAME inputs** (0.32 vs 0.21)
+  — the rule base, not the inputs, drives the gain.
+- Held-out (isotonic calibration): **QWK 0.48, Pearson 0.61, RMSE 18.0**
+  < baseline 21.9.
 
 ## Results — Stability (what the DNN was never tested for)
 
-- **Paraphrase:** grade moves only **0.72 pts** on average.
-- **Padding:** appending filler changes the grade by **-1.1 pts**.
+- **Paraphrase:** grade moves only **0.24 pts** on average.
+- **Padding:** appending filler changes the grade by **-0.5 pts**.
     - the system does *not* reward verbosity — resists length-gaming.
 - Stability follows from the architecture: a centroid over a small
   rule base changes smoothly with its inputs.
@@ -118,8 +121,9 @@
 |------|------|
 | Parsing, POS, NER | spaCy |
 | Keywords | YAKE + KeyBERT + WordNet |
-| Semantic judgement | Sentence-BERT (offline) |
+| Semantic judgement | Cross-encoder + Sentence-BERT (offline) |
 | Fuzzy inference | from-scratch Mamdani (NumPy) |
+| Calibration | isotonic (scikit-learn) |
 | Interface | Streamlit |
 | Plots | matplotlib |
 

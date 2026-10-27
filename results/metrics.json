@@ -12,10 +12,10 @@
     "qwk": 0.177
   },
   "similarity-only": {
-    "rmse_0_100": 34.88,
-    "rmse_norm": 0.3488,
-    "pearson": 0.496,
-    "qwk": 0.264
+    "rmse_0_100": 36.33,
+    "rmse_norm": 0.3633,
+    "pearson": 0.554,
+    "qwk": 0.248
   },
   "ner-only": {
     "rmse_0_100": 42.45,
@@ -24,21 +24,33 @@
     "qwk": 0.063
   },
   "mean-of-modules": {
-    "rmse_0_100": 33.1,
-    "rmse_norm": 0.331,
-    "pearson": 0.442,
-    "qwk": 0.253
+    "rmse_0_100": 33.83,
+    "rmse_norm": 0.3383,
+    "pearson": 0.446,
+    "qwk": 0.251
+  },
+  "mean(keyword+similarity)": {
+    "rmse_0_100": 42.83,
+    "rmse_norm": 0.4283,
+    "pearson": 0.539,
+    "qwk": 0.209
   },
   "full-fuzzy-lenient": {
-    "rmse_0_100": 34.17,
-    "rmse_norm": 0.3417,
-    "pearson": 0.48,
-    "qwk": 0.312
+    "rmse_0_100": 35.33,
+    "rmse_norm": 0.3533,
+    "pearson": 0.551,
+    "qwk": 0.315
   },
   "full-fuzzy-strict": {
-    "rmse_0_100": 50.54,
-    "rmse_norm": 0.5054,
-    "pearson": 0.457,
-    "qwk": 0.159
+    "rmse_0_100": 42.35,
+    "rmse_norm": 0.4235,
+    "pearson": 0.552,
+    "qwk": 0.244
+  },
+  "full-fuzzy-lenient (calibrated, full)": {
+    "rmse_0_100": 17.65,
+    "rmse_norm": 0.1765,
+    "pearson": 0.594,
+    "qwk": 0.459
   }
 }

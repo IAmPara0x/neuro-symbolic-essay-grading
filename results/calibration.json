@@ -1,20 +1,17 @@
 {
-  "fit": {
-    "slope": 0.405,
-    "intercept": 59.74
-  },
+  "method": "isotonic",
   "train_n": 1818,
   "test_n": 455,
   "uncalibrated_test": {
-    "rmse_0_100": 33.34,
-    "rmse_norm": 0.3334,
-    "pearson": 0.478,
-    "qwk": 0.33
+    "rmse_0_100": 33.89,
+    "rmse_norm": 0.3389,
+    "pearson": 0.58,
+    "qwk": 0.355
   },
   "calibrated_test": {
-    "rmse_0_100": 19.92,
-    "rmse_norm": 0.1992,
-    "pearson": 0.478,
-    "qwk": 0.376
+    "rmse_0_100": 17.99,
+    "rmse_norm": 0.1799,
+    "pearson": 0.612,
+    "qwk": 0.481
   }
 }

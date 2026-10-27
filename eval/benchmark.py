@@ -33,6 +33,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt                                  # noqa: E402
 
 from src import config                                           # noqa: E402
+from src import calibration as calib                             # noqa: E402
 from src.preprocess import load_dataset, normalise               # noqa: E402
 from src.grader import Grader                                    # noqa: E402
 from src.fuzzy_engine import FuzzyGrader, trimf, trapmf          # noqa: E402
@@ -69,7 +70,8 @@ def collect(df):
         m = mechanics.score(s, r).score
         kw.append(k); sim.append(sm); nr.append(n); mech.append(m)
 
-        inp = {"keyword": k, "similarity": sm, "ner": n}
+        allsc = {"keyword": k, "similarity": sm, "ner": n}
+        inp = {v: allsc[v] for v in config.FUZZY_INPUTS}
         pen = config.MECHANICS_PENALTY_WEIGHT * (100.0 - m)
         full_s.append(float(np.clip(fz_strict.grade(inp).grade - pen, 0, 100)))
         full_l.append(float(np.clip(fz_lenient.grade(inp).grade - pen, 0, 100)))
@@ -96,51 +98,59 @@ def run():
         "similarity-only":  sc["similarity"],
         "ner-only":         sc["ner"],
         "mean-of-modules":  (sc["keyword"] + sc["similarity"] + sc["ner"]) / 3.0,
+        "mean(keyword+similarity)": (sc["keyword"] + sc["similarity"]) / 2.0,
         "full-fuzzy-lenient": sc["full_lenient"],
         "full-fuzzy-strict":  sc["full_strict"],
     }
     metrics = {name: _metrics(pred, true) for name, pred in systems.items()}
 
-    # ---- optional affine calibration (train/test), clearly separate ----------
-    # Primary system = lenient policy: it matches this dataset's lenient human
-    # graders (mean 4.18/5) and achieves the best QWK in the ablation.
+    # ---- calibration (Lever 4): affine vs isotonic, honest train/test --------
+    # Primary system = lenient policy (matches the lenient human graders here).
     primary = sc["full_lenient"]
     rng = np.random.default_rng(42)
     idx = rng.permutation(len(df))
     cut = int(0.8 * len(df))
     tr, te = idx[:cut], idx[cut:]
-    x = primary
-    a, b = np.polyfit(x[tr], true[tr], 1)              # fit on train only
-    cal_pred = a * x[te] + b
-    calibration = {
-        "fit": {"slope": round(float(a), 3), "intercept": round(float(b), 2)},
+    params_tr = calib.fit(primary[tr], true[tr])
+    method = calib.choose_method(params_tr, primary[tr], true[tr])
+    params_tr["method"] = method
+    cal_pred_te = calib.apply(primary[te], params_tr, method=method)
+    calib_report = {
+        "method": method,
         "train_n": int(len(tr)), "test_n": int(len(te)),
-        "uncalibrated_test": _metrics(x[te], true[te]),
-        "calibrated_test": _metrics(cal_pred, true[te]),
+        "uncalibrated_test": _metrics(primary[te], true[te]),
+        "calibrated_test": _metrics(cal_pred_te, true[te]),
     }
+    # Fit on the FULL dataset and ship these params so the grader/demo output is
+    # on the human mark scale (clearly a per-dataset, transparent rescaling).
+    params_full = calib.fit(primary, true)
+    params_full["method"] = calib.choose_method(params_full, primary, true)
+    calib.save(params_full)
+    primary_cal = calib.apply(primary, params_full)
+    metrics["full-fuzzy-lenient (calibrated, full)"] = _metrics(primary_cal, true)
 
-    # ---- robustness (subset for speed) ---------------------------------------
+    # ---- robustness (now reflects the shipped calibrated grader) -------------
     robustness = run_robustness(df, n=400)
 
     # ---- write results -------------------------------------------------------
     (RESULTS / "metrics.json").write_text(json.dumps(metrics, indent=2))
-    (RESULTS / "calibration.json").write_text(json.dumps(calibration, indent=2))
+    (RESULTS / "calibration.json").write_text(json.dumps(calib_report, indent=2))
     (RESULTS / "robustness.json").write_text(json.dumps(robustness, indent=2))
     write_table(metrics)
 
-    # ---- figures -------------------------------------------------------------
-    fig_scatter(primary, true)
-    fig_distribution(primary, true)
+    # ---- figures (calibrated grades, the shipped output) ---------------------
+    fig_scatter(primary_cal, true)
+    fig_distribution(primary_cal, true)
     fig_ablation(metrics)
     fig_membership()
 
     print("\n=== MAIN RESULTS (full dataset) ===")
-    print(f"{'system':<20}{'rmse':>8}{'pearson':>10}{'qwk':>8}")
+    print(f"{'system':<40}{'rmse':>8}{'pearson':>10}{'qwk':>8}")
     for name, m in metrics.items():
-        print(f"{name:<20}{m['rmse_0_100']:>8}{m['pearson']:>10}{m['qwk']:>8}")
-    print(f"\nCalibrated (test) RMSE: "
-          f"{calibration['calibrated_test']['rmse_0_100']} "
-          f"(uncalibrated {calibration['uncalibrated_test']['rmse_0_100']})")
+        print(f"{name:<40}{m['rmse_0_100']:>8}{m['pearson']:>10}{m['qwk']:>8}")
+    print(f"\nCalibration method: {calib_report['method']}; "
+          f"calibrated (test) RMSE: {calib_report['calibrated_test']['rmse_0_100']} "
+          f"(uncalibrated {calib_report['uncalibrated_test']['rmse_0_100']})")
     print(f"Robustness: paraphrase drift {robustness['paraphrase_mean_abs_drift']} pts, "
           f"padding change {robustness['padding_mean_grade_change']} pts")
     print(f"\nAll results + figures written to {RESULTS}/")

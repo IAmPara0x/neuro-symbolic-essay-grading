@@ -26,6 +26,12 @@ except Exception:
     _HAS_SBERT = False
 
 try:
+    from sentence_transformers import CrossEncoder
+    _HAS_CROSS = True
+except Exception:
+    _HAS_CROSS = False
+
+try:
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity as _sk_cosine
     _HAS_SKLEARN = True
@@ -33,6 +39,8 @@ except Exception:
     _HAS_SKLEARN = False
 
 _sbert_model = None
+_cross_model = None
+_cross_failed = False
 
 
 def _sbert():
@@ -40,6 +48,20 @@ def _sbert():
     if _sbert_model is None and _HAS_SBERT:
         _sbert_model = SentenceTransformer(config.SBERT_MODEL)
     return _sbert_model
+
+
+def _cross():
+    """Lazily load the cross-encoder; disable permanently if it fails to load."""
+    global _cross_model, _cross_failed
+    if _cross_failed or not (_HAS_CROSS and config.USE_CROSS_ENCODER):
+        return None
+    if _cross_model is None:
+        try:
+            _cross_model = CrossEncoder(config.CROSS_ENCODER_MODEL)
+        except Exception:
+            _cross_failed = True
+            return None
+    return _cross_model
 
 
 def _sentences(text: str) -> list[str]:
@@ -74,7 +96,7 @@ def _encode_sentences(text: str) -> np.ndarray:
     return hit
 
 
-def _sbert_score(student: str, reference: str) -> tuple[float, dict]:
+def _sbert_score(student: str, reference: str) -> tuple[float, dict, str]:
     # document-level cosine (both embeddings normalised -> dot product = cosine)
     doc_cos = float(np.dot(_encode(student), _encode(reference)))
 
@@ -90,16 +112,27 @@ def _sbert_score(student: str, reference: str) -> tuple[float, dict]:
         matched = int((best >= config.SIMILARITY_SENTENCE_THRESHOLD).sum())
         coverage = float(best.mean())
 
-    # blend document cosine and reference-sentence coverage
-    cos = 0.5 * doc_cos + 0.5 * coverage
-    score = float(np.clip(cos, 0.0, 1.0) * 100.0)
+    # cross-encoder gives a far better pairwise (student, reference) STS score;
+    # when available it carries most of the weight, with bi-encoder sentence
+    # coverage as a secondary signal.
+    ce = _cross()
     evidence = {
         "document_cosine": round(doc_cos, 3),
         "mean_ref_sentence_match": round(coverage, 3),
         "ref_sentences_covered": f"{matched}/{len(r_sents)}" if r_sents else "n/a",
         "threshold": config.SIMILARITY_SENTENCE_THRESHOLD,
     }
-    return score, evidence
+    if ce is not None:
+        cross = float(ce.predict([(student, reference)])[0])
+        cross = 1.0 / (1.0 + np.exp(-cross)) if cross < 0 or cross > 1 else cross
+        cos = 0.7 * cross + 0.3 * coverage
+        evidence["cross_encoder"] = round(cross, 3)
+        backend = "cross-encoder+sbert"
+    else:
+        cos = 0.5 * doc_cos + 0.5 * coverage
+        backend = "sbert"
+    score = float(np.clip(cos, 0.0, 1.0) * 100.0)
+    return score, evidence, backend
 
 
 def _tfidf_score(student: str, reference: str) -> tuple[float, dict]:
@@ -114,8 +147,8 @@ def _tfidf_score(student: str, reference: str) -> tuple[float, dict]:
 
 def score(student: str, reference: str, question: str | None = None) -> ModuleResult:
     if _HAS_SBERT:
-        s, ev = _sbert_score(student, reference)
-        return ModuleResult("similarity", s, ev, backend="sbert")
+        s, ev, backend = _sbert_score(student, reference)
+        return ModuleResult("similarity", s, ev, backend=backend)
     if _HAS_SKLEARN:
         s, ev = _tfidf_score(student, reference)
         ev["note"] = "SBERT unavailable; using TF-IDF cosine fallback"

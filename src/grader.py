@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import config
+from . import config, calibration
 from .preprocess import normalise
 from .fuzzy_engine import FuzzyGrader, FuzzyResult
 from .modules import keyword, similarity, ner, mechanics, ModuleResult
@@ -55,9 +55,11 @@ def _letter(grade: float) -> str:
 class Grader:
     """Reusable grader; loads models once and grades many answers."""
 
-    def __init__(self, policy: str | None = None):
+    def __init__(self, policy: str | None = None, calibrate: bool | None = None):
         self.policy = policy or config.GRADING_POLICY
         self.fuzzy = FuzzyGrader(self.policy)
+        want_cal = config.APPLY_CALIBRATION if calibrate is None else calibrate
+        self.calibration = calibration.load() if want_cal else None
 
     def grade(self, student: str, reference: str,
               question: str | None = None) -> Scorecard:
@@ -72,16 +74,16 @@ class Grader:
         modules = {"keyword": kw, "similarity": sim, "ner": nr, "mechanics": mech}
         module_scores = {k: m.score for k, m in modules.items()}
 
-        # fuzzy inference over the three parent-paper modules
-        fz = self.fuzzy.grade({
-            "keyword": kw.score,
-            "similarity": sim.score,
-            "ner": nr.score,
-        })
+        # fuzzy inference over the informative inputs only (config.FUZZY_INPUTS);
+        # NER is computed above for the scorecard but excluded from the decision.
+        fz = self.fuzzy.grade({v: module_scores[v] for v in config.FUZZY_INPUTS})
 
         # transparent mechanical penalty (advisory, never dominant)
         penalty = config.MECHANICS_PENALTY_WEIGHT * (100.0 - mech.score)
-        final = max(config.SCORE_MIN, min(config.SCORE_MAX, fz.grade - penalty))
+        raw = max(config.SCORE_MIN, min(config.SCORE_MAX, fz.grade - penalty))
+
+        # optional transparent calibration to the human mark scale
+        final = calibration.apply(raw, self.calibration) if self.calibration else raw
 
         return Scorecard(
             final_grade=final,
@@ -91,7 +93,8 @@ class Grader:
             fuzzy=fz,
             policy=self.policy,
             mechanics_penalty=penalty,
-            meta={"question": question},
+            meta={"question": question, "raw_grade": round(raw, 1),
+                  "calibrated": self.calibration is not None},
         )
 
 

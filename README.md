@@ -83,20 +83,26 @@ python tests/test_pipeline.py   # unit tests (or: python -m pytest -q)
 |---|---|---|---|
 | mean-baseline | 21.93 | 0.000 | 0.000 |
 | keyword-only | 51.91 | 0.469 | 0.177 |
-| similarity-only | 34.88 | **0.496** | 0.264 |
+| similarity-only (neural, cross-encoder) | 36.33 | 0.554 | 0.248 |
 | ner-only | 42.45 | 0.068 | 0.063 |
-| mean-of-modules (linear) | 33.10 | 0.442 | 0.253 |
-| full-fuzzy (strict) | 50.54 | 0.457 | 0.159 |
-| **full-fuzzy (lenient)** | 34.17 | 0.480 | **0.312** |
+| mean-of-modules (linear, 3 modules) | 33.83 | 0.446 | 0.251 |
+| mean(keyword+similarity) (linear, same inputs) | 42.83 | 0.539 | 0.209 |
+| full-fuzzy (strict) | 42.35 | 0.552 | 0.244 |
+| **full-fuzzy (lenient), uncalibrated** | 35.33 | 0.551 | 0.315 |
+| **full-fuzzy (lenient) + calibration** | **17.65** | **0.594** | **0.459** |
 
-The fuzzy combiner achieves the **highest QWK of any configuration** — it ranks answers
-in closer ordinal agreement with human examiners than any single module or their linear
-average. After a single affine calibration (fit on 80% train), held-out **RMSE drops to
-19.9**, beating the mean-prediction baseline (21.9).
+The fuzzy combiner achieves the **highest QWK of any configuration**, and beats a linear
+average of the *same two inputs* (0.315 vs 0.209) — the rule base itself adds the gain.
+Held-out (isotonic calibration, fit on 80% train, eval on 20% test): **QWK 0.481,
+Pearson 0.612, RMSE 17.99**, beating the mean-prediction baseline (21.93).
 
-**Robustness:** paraphrase mean drift **0.72 pts** (very stable); appending filler
-changes the grade by **−1.1 pts** on average — the system does **not** reward verbosity
-(the classic AES exploit).
+**Robustness:** paraphrase mean drift **0.24 pts** (very stable); appending filler
+changes the grade by **−0.5 pts** on average — the system does **not** reward verbosity.
+
+> Three improvements over the first version: (1) NER dropped from the fuzzy decision
+> (empirically near-random here, r=0.07; still shown as evidence); (2) a **cross-encoder**
+> for the semantic pair score (Pearson 0.48 → 0.55); (3) reshaped output sets + **isotonic
+> calibration** (QWK 0.38 → 0.48, RMSE 19.9 → 18.0 on held-out test).
 
 > The dataset is strongly skewed to high marks (human mean 83.7/100), which makes the
 > constant mean-baseline hard to beat on RMSE alone — hence rank metrics (QWK, Pearson)

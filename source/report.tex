@@ -96,12 +96,12 @@ the grade. The explanation \emph{is} the computation, not a narrative about it.
 
 We evaluate on the Mohler (2011) UNT Computer Science short-answer corpus (2{,}273
 answers, 79 questions) using Quadratic Weighted Kappa (QWK), Pearson correlation
-and RMSE. The fuzzy combiner attains the highest human agreement of any
-configuration tested (QWK $0.31$, versus $0.26$ for the best single module and
-$0.25$ for a linear average), and after a single affine calibration step it
-reaches RMSE $19.9$ on held-out data, beating the mean-prediction baseline. The
-system is markedly stable: lightly paraphrasing an answer moves its grade by
-$0.7$ points on average, and appending irrelevant filler does not raise the grade
+and RMSE. The fuzzy combiner beats a linear average of the \emph{same inputs}
+(QWK $0.315$ vs $0.209$), isolating the value added by the rule base; with a
+single monotone (isotonic) calibration it reaches QWK $0.48$, Pearson $0.61$ and
+RMSE $18.0$ on held-out data, beating the mean-prediction baseline. The system is
+markedly stable: lightly paraphrasing an answer moves its grade by only $0.24$
+points on average, and appending irrelevant filler does not raise the grade
 --- a direct test of the length-gaming vulnerability that the combiner in the
 parent design could not be shown to resist. The contribution is architectural:
 comparable ranking of answers to a trained black box, with an auditable,
@@ -468,39 +468,45 @@ is advisory: it enters the final mark only as a small, transparent penalty
 
 \subsection{Neural Pathway}
 
-The semantic score is produced by a Sentence-BERT bi-encoder
-(\texttt{all-MiniLM-L6-v2}). The reference and student answers are encoded into
-normalised embeddings and compared by cosine similarity at the document level; in
-addition, per-sentence best-match coverage against the reference is computed with
-the parent paper's $0.75$ threshold, and the two are blended. Embeddings are
-cached by text so that each distinct reference is encoded once. This is the
-project's only neural component --- a deep transformer used strictly as a semantic
-sensor. Running locally, it issues no external call and returns a single
-deterministic number, so it has no channel through which to hallucinate a
-justification.
+The semantic score is produced by a transformer run locally. A \emph{cross-encoder}
+(\texttt{stsb-roberta-base}) jointly reads the (student, reference) pair and
+produces a semantic-textual-similarity score; cross-encoders are substantially more
+accurate on pairwise similarity than bi-encoders because attention spans both texts
+at once. This is blended ($0.7$) with per-sentence best-match coverage computed by a
+Sentence-BERT bi-encoder (\texttt{all-MiniLM-L6-v2}) against the parent paper's
+$0.75$ threshold ($0.3$). Bi-encoder embeddings are cached so each distinct
+reference is encoded once; if the cross-encoder is unavailable the module falls back
+to the bi-encoder cosine, then to TF-IDF. This is the project's only neural
+component --- a deep transformer used strictly as a semantic sensor. Running
+locally, it issues no external call and returns a single deterministic number, so it
+has no channel through which to hallucinate a justification.
 
 \subsection{Fuzzy Inference Engine}
 
-The three parent-paper module scores (keyword, similarity, NER) are the inputs to
-a Mamdani fuzzy inference system. Each input is fuzzified over the universe
-$[0,100]$ into three linguistic sets --- \emph{Low}, \emph{Medium}, \emph{High}
---- with the trapezoidal/triangular membership functions shown in the left panel
-of Figure~\ref{fig:mf}. The output grade uses four sets --- \emph{Poor},
-\emph{Average}, \emph{Good}, \emph{Excellent} --- shown in the right panel.
+Two of the three module scores --- keyword coverage and semantic similarity ---
+are the inputs to a Mamdani fuzzy inference system. NER is computed and reported on
+the scorecard but \emph{excluded from the decision}, because it is empirically
+near-random on this corpus ($r=0.07$); dropping a weak sensor without retraining is
+precisely the flexibility that symbolic control affords. Each input is fuzzified
+over the universe $[0,100]$ into three linguistic sets --- \emph{Low},
+\emph{Medium}, \emph{High} --- with the membership functions in the left panel of
+Figure~\ref{fig:mf}. The output grade uses five sets --- \emph{Poor},
+\emph{Average}, \emph{Good}, \emph{Very Good}, \emph{Excellent} --- shown in the
+right panel; the upper sets are placed high on the scale to reduce the range
+compression of centroid defuzzification.
 
 \begin{figure}[!ht]
 \centering
 \includegraphics[width=\textwidth]{fig_membership.png}
-\caption{Membership functions. Left: the three input linguistic sets shared by
-the keyword, similarity and NER inputs. Right: the four output sets over the grade
-universe. These shapes are declared in configuration and are editable by the
-examiner.}
+\caption{Membership functions. Left: the three input linguistic sets shared by the
+keyword and similarity inputs. Right: the five output sets over the grade universe.
+These shapes are declared in configuration and are editable by the examiner.}
 \label{fig:mf}
 \end{figure}
 
-The grading policy is a small rule base. The default \emph{strict} policy
-contains eight rules; the \emph{lenient} policy, which better matches leniently
-graded corpora, contains five. Representative rules are:
+The grading policy is a small rule base over the two inputs. The \emph{strict}
+policy contains nine rules; the \emph{lenient} policy, which better matches
+leniently graded corpora, contains six. Representative rules are:
 
 \begin{quote}\footnotesize
 \rulebox{IF similarity is High AND keyword is High THEN Excellent}\\[3pt]
@@ -535,9 +541,9 @@ grading policy without touching code.
 \caption{A worked scorecard. The three top-left/-right panels show where each
 input falls among \emph{Low}/\emph{Medium}/\emph{High} (dashed line = crisp
 value); the bottom-right panel shows the aggregated Mamdani output (shaded) and
-the centroid grade (red). Here high semantic similarity and keyword coverage fire
-the \emph{Excellent} rule, yielding an A despite a zero NER score --- the fuzzy
-layer absorbs a single weak input rather than letting it dominate.}
+the centroid grade (red). Here high semantic similarity fires the \emph{Excellent}
+rule; the raw centroid ($92.9$) is calibrated to a final A+ --- the decision is
+driven by meaning, and the explanation is the rule that fired.}
 \label{fig:scorecard}
 \end{figure}
 
@@ -571,11 +577,10 @@ training-free, so primary metrics are reported over the full dataset.
 \subsection{Baselines and Ablation}
 
 We compare the full system against: a \emph{mean-baseline} that predicts the mean
-human grade for every answer; each of the three modules used \emph{alone} as the
-grade; and a \emph{mean-of-modules} linear average. The last is the key
-comparator: it isolates the effect of the fuzzy rule base against a simple linear
-fusion of the same three signals. Both grading policies (strict, lenient) are
-reported.
+human grade for every answer; each module used \emph{alone}; a \emph{mean-of-modules}
+average of all three; and --- the key comparator --- a linear average of the
+\emph{same two inputs} the fuzzy system uses, which isolates the effect of the rule
+base from the choice of inputs. Both grading policies (strict, lenient) are reported.
 
 \subsection{Robustness Protocol}
 
@@ -595,46 +600,48 @@ of 400 answers.
 \subsection{Main Results}
 
 Table~\ref{tab:main} reports every system on the full corpus. The fuzzy combiner
-under the lenient policy attains the \textbf{highest QWK of any configuration}
-($0.312$), exceeding the best single module (similarity, $0.264$) and the linear
-average of the three modules (mean-of-modules, $0.253$). This is the central
-result: combining the three signals through an explicit rule base ranks answers in
-closer ordinal agreement with human examiners than any single module or their
-plain average. Pearson correlation is competitive with the strongest module
-($0.48$ vs $0.50$). The NER module alone is near-random on this corpus
-($r=0.07$), yet the fuzzy system remains strong because the rule base weights it
-only in conjunction with other evidence --- precisely the robustness that
-motivates symbolic control.
+under the lenient policy attains the \textbf{highest QWK of any uncalibrated
+configuration} ($0.315$), exceeding the best single module (similarity, $0.248$)
+and --- crucially --- a linear average of the \emph{same two inputs}
+($0.209$). That last comparison isolates the contribution of the rule base: with
+identical inputs, fuzzy fusion raises QWK by more than $0.10$ over a plain
+average. The semantic module uses a cross-encoder (§5.3), lifting its Pearson to
+$0.55$; the full system inherits this ($r=0.55$). NER is excluded from the
+decision because it is near-random on this corpus ($r=0.07$); it is retained only
+as reported evidence. With the transparent calibration of §7.2, the shipped system
+reaches QWK $0.46$ and Pearson $0.59$ on the full set.
 
 \begin{table}[!ht]
 \centering
 \small
 \caption{Grading performance on the Mohler (2011) corpus (2{,}273 answers, full
-dataset). Higher Pearson/QWK and lower RMSE are better. The fuzzy combiner
-(lenient) achieves the best human agreement (QWK).}
+dataset). Higher Pearson/QWK and lower RMSE are better. The fuzzy combiner beats
+a linear average of the same two inputs, and calibration gives the best overall
+figures.}
 \label{tab:main}
 \begin{tabular}{@{}lccc@{}}
 \toprule
 \textbf{System} & \textbf{RMSE (0--100)} & \textbf{Pearson $r$} & \textbf{QWK} \\
 \midrule
-mean-baseline            & 21.93 & 0.000 & 0.000 \\
-keyword-only             & 51.91 & 0.469 & 0.177 \\
-similarity-only          & 34.88 & \textbf{0.496} & 0.264 \\
-ner-only                 & 42.45 & 0.068 & 0.063 \\
-mean-of-modules (linear) & 33.10 & 0.442 & 0.253 \\
-full-fuzzy (strict)      & 50.54 & 0.457 & 0.159 \\
-\textbf{full-fuzzy (lenient)} & 34.17 & 0.480 & \textbf{0.312} \\
+mean-baseline                      & 21.93 & 0.000 & 0.000 \\
+keyword-only (symbolic)            & 51.91 & 0.469 & 0.177 \\
+similarity-only (neural, cross-enc.)& 36.33 & 0.554 & 0.248 \\
+ner-only (symbolic)                & 42.45 & 0.068 & 0.063 \\
+mean-of-modules (linear, 3)        & 33.83 & 0.446 & 0.251 \\
+mean(keyword+similarity) (linear)  & 42.83 & 0.539 & 0.209 \\
+full-fuzzy (strict)                & 42.35 & 0.552 & 0.244 \\
+full-fuzzy (lenient), uncalibrated & 35.33 & 0.551 & 0.315 \\
+\textbf{full-fuzzy (lenient) + calibration} & \textbf{17.65} & \textbf{0.594} & \textbf{0.459} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Figure~\ref{fig:ablation} visualises the ablation. The two fuzzy policies differ
-sharply: the strict policy under-grades badly on this leniently annotated corpus
-(QWK $0.159$), while the lenient policy --- which matches the behaviour of the
-dataset's human graders --- is best. This is not a weakness but the intended
-mechanism: \emph{the policy is meant to be chosen to match the examiner}, and here
-the examiners were lenient. Switching policy requires no retraining and no code
-change, only a different rule set.
+Figure~\ref{fig:ablation} visualises the ablation. The decisive comparison is the
+fuzzy combiner against a linear average of the \emph{same two inputs}: QWK rises
+from $0.209$ to $0.315$, showing the rule base --- not merely the choice of inputs
+--- drives the agreement. The lenient policy, which matches the behaviour of this
+corpus's human graders, outperforms the strict policy ($0.244$); switching policy
+requires no retraining and no code change, only a different rule set.
 
 \begin{figure}[!ht]
 \centering
@@ -651,38 +658,38 @@ Centroid defuzzification compresses the output range: a Mamdani system rarely
 emits values near the extremes, so the raw grades sit lower than a corpus whose
 human mean is $83.7$. RMSE therefore looks poor for any uncalibrated system on
 this skewed corpus, and the constant mean-baseline is hard to beat on RMSE alone
---- which is exactly why we report rank metrics as primary. To place our error on
-comparable footing with the parent paper's \emph{trained} DNN, we fit a single
-affine map (slope, intercept) on an $80\%$ training split and evaluate on the
-held-out $20\%$. This one-parameter-pair calibration leaves Pearson unchanged (it
-is affine-invariant) but reduces test RMSE from $33.3$ to \textbf{19.9},
-\emph{below} the mean-baseline, and raises test QWK from $0.33$ to $0.38$
+--- which is exactly why we report rank metrics as primary. We apply a single
+\emph{monotone} calibration map, selecting between an affine and an isotonic fit on
+an $80\%$ training split and evaluating on the held-out $20\%$ (isotonic was
+selected). Because the map is monotone and reshapes the distribution, it reduces
+test RMSE from $33.9$ to \textbf{18.0} (below the mean-baseline), and raises test
+QWK from $0.36$ to \textbf{0.48} and Pearson from $0.58$ to \textbf{0.61}
 (Table~\ref{tab:calib}). The core system remains training-free; calibration is a
-transparent, optional final rescaling.
+transparent final rescaling learned from one scalar signal.
 
 \begin{table}[!ht]
 \centering
 \small
-\caption{Affine calibration of the lenient fuzzy system (fit on 80\% train,
-evaluated on 20\% test, $n_{\text{test}}=455$). Calibration is a single
-monotone rescaling applied after the rule base.}
+\caption{Isotonic calibration of the lenient fuzzy system (fit on 80\% train,
+evaluated on 20\% test, $n_{\text{test}}=455$). A single monotone map applied
+after the rule base.}
 \label{tab:calib}
 \begin{tabular}{@{}lccc@{}}
 \toprule
  & \textbf{RMSE (0--100)} & \textbf{Pearson $r$} & \textbf{QWK} \\
 \midrule
-Uncalibrated (test)       & 33.34 & 0.478 & 0.330 \\
-\textbf{Calibrated (test)} & \textbf{19.92} & 0.478 & \textbf{0.376} \\
+Uncalibrated (test)       & 33.89 & 0.580 & 0.355 \\
+\textbf{Calibrated (test)} & \textbf{17.99} & \textbf{0.612} & \textbf{0.481} \\
 \midrule
 mean-baseline (reference) & 21.93 & 0.000 & 0.000 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Figure~\ref{fig:scatter} plots system grades against human grades. The positive
-trend ($r=0.48$) is clear; the systematic offset below the diagonal is the range
-compression that calibration removes. Figure~\ref{fig:dist} shows the
-corresponding grade distributions.
+Figure~\ref{fig:scatter} plots calibrated system grades against human grades. The
+positive trend ($r=0.59$) is clear and the mass now lies near the high-grade
+region of the diagonal, where the human corpus concentrates. Figure~\ref{fig:dist}
+shows the corresponding grade distributions.
 
 \begin{figure}[!ht]
 \centering
@@ -705,8 +712,8 @@ central before calibration.}
 \subsection{Robustness}
 
 The system is highly stable (Table~\ref{tab:robust}). Paraphrasing an answer by
-synonym substitution moves its grade by only $0.72$ points on average; the mean
-change under appended filler is $-1.1$ points, i.e. padding does \emph{not} raise
+synonym substitution moves its grade by only $0.24$ points on average; the mean
+change under appended filler is $-0.5$ points, i.e. padding does \emph{not} raise
 the grade and on balance slightly lowers it. This directly tests the length-gaming
 vulnerability that has plagued AES since Generation 1 \cite{ke2019} and that a
 trained regression combiner is not guaranteed to resist. The stability follows
@@ -723,8 +730,8 @@ non-positive padding change are better.}
 \toprule
 \textbf{Test} & \textbf{Value} \\
 \midrule
-Paraphrase: mean absolute grade drift  & 0.72 pts \\
-Padding: mean grade change             & $-1.09$ pts \\
+Paraphrase: mean absolute grade drift  & 0.24 pts \\
+Padding: mean grade change             & $-0.51$ pts \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -735,13 +742,14 @@ Figure~\ref{fig:scorecard} showed a representative decision. For the student
 answer \emph{``A stack is a linear data structure that works on LIFO order, we
 push to add an item on the top and pop to remove the top item''} against the stack
 reference, the system reports keyword coverage $70$, semantic cosine $0.85$
-(similarity $85$), NER $0$, and mechanics $84$. A single rule fires,
+(similarity $79.5$), NER $0$, and mechanics $84$. Under the lenient policy a single
+rule fires,
 
 \begin{quote}\footnotesize
-\rulebox{IF similarity is High AND keyword is High THEN Excellent}\quad(firing strength $0.60$),
+\rulebox{IF meaning is High THEN Excellent}\quad(firing strength $0.98$),
 \end{quote}
 
-\noindent and the centroid yields a grade of $86/100$ (A). The scorecard lists the matched
+\noindent the raw centroid is $92.9$, and calibration maps it to a final A+. The scorecard lists the matched
 keywords (\emph{stack, linear, data, structure, push, pop, top}) and the missed
 ones (\emph{principle, operations, follows}). Nothing about this grade is hidden:
 an examiner can read why the mark is what it is, and can change the policy if they
@@ -794,9 +802,10 @@ transparent Mamdani fuzzy inference system, and by keeping the neural semantic
 component entirely offline. The three original modules are retained as evidence
 producers; the fuzzy rule base owns the decision and emits, for every grade, the
 exact rules and evidence that produced it. On the public Mohler (2011) CS
-short-answer corpus the fuzzy combiner achieved the best human agreement (QWK
-$0.31$) of any configuration, beat the mean-prediction baseline on RMSE after a
-single affine calibration, and proved stable under paraphrase and resistant to
+short-answer corpus the fuzzy combiner beat a linear average of the same inputs
+(QWK $0.315$ vs $0.209$), and with a single monotone calibration reached QWK
+$0.48$, Pearson $0.61$ and RMSE $18.0$ on held-out data --- beating the
+mean-prediction baseline --- while proving stable under paraphrase and resistant to
 padding. The system trades a small, well-understood calibration step for a
 decision procedure that is auditable, editable by a non-programmer, and incapable
 of hallucinating its own justification --- the properties an assessment
